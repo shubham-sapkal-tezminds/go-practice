@@ -1,0 +1,17 @@
+go 1.21.1
+
+use ./01hello
+use ./02variables
+use ./03userinput
+use ./04conversion
+use ./05pointers
+use ./06slices
+use ./07maps
+use ./08structs
+use ./09ifelseSwitch
+use ./10loops
+use ./11methods
+use ./12defer
+use ./13files
+use ./14webrequest
+use ./15handlingURL
