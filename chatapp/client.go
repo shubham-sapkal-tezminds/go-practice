@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -11,172 +12,299 @@ import (
 )
 
 const (
- SERVER_HOST = "192.168.1.19"
- SERVER_PORT = "9988"
- SERVER_TYPE = "tcp"
+    SERVER_HOST = "192.168.1.19"
+    SERVER_PORT = "9988"
+    SERVER_TYPE = "tcp"
 )
 
-var file, err = os.OpenFile("./mylogfile.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+var userNames = map[string]string{
+  "naveen": "192.168.1.42:8000",
+  "kaushal": "192.168.1.19:6000",
+  "vipul" : "192.168.1.40:7000",
+}
+
+
+var file, _ = os.OpenFile("./mylogfile.txt", os.O_CREATE|os.O_WRONLY, 0644)
 
 var senderIP string = "192.168.1.19"
 var receiverIp string
+var Ip string
+type User struct {
+    IpAddress string
+    UserInfo  UserInfo
+}
+
+type UserInfo struct {
+    Username string
+    Chat     []string
+}
+
+var users []User
+
+var data = make(map[string]UserInfo)
 
 func main() {
- connection, err := net.Dial(SERVER_TYPE, SERVER_HOST+":"+SERVER_PORT)
-   if err != nil {
-   fmt.Println("Error connecting to server:", err.Error())
-   os.Exit(1)
- }
-   defer connection.Close()
 
- if err != nil {
-   panic(err)
- }
+    connection, err := net.Dial(SERVER_TYPE, SERVER_HOST+":"+SERVER_PORT)
+    if err != nil {
+        fmt.Println("Error connecting to server:", err.Error())
+        os.Exit(1)
+    }
+    defer connection.Close()
 
- clientAddr := connection.RemoteAddr().String()  // RemoteAddr gets the remote address i.e. IP of client and converts it into a string
-
-
-
- go func() { serverStart(clientAddr, connection) }()
-   fmt.Print("\nHost to connect to: ") // Asks for input to user
-   var host string
-   fmt.Scanln(&host)  //fmt.Scanln function reads the user's input and assigns it to the host variable
-
-   ip, _, err := net.SplitHostPort(host)  // net.SplitHostPort splits the input into I.P. address and Port number
-   if err != nil {
-   fmt.Println("Invalid input format. Please provide IP address and port.")
-   return
- }
-
- receiverIp = ip
-
- prevMessages()
-
- for {
-
-   scanner := bufio.NewScanner(os.Stdin)  // bufio.NewScanner creates a new scanner that reads from the standard input
-   scanner.Scan() // 
-
-   currentTime := time.Now()  // Returns current time
-
-   timeString := currentTime.Format("2006-01-02 15:04:05")  // Formats the current time in "2006-01-02 15:04:05" format
-
-   text := senderIP + " " + receiverIp + " " + "Kaushal : " + timeString + " " + scanner.Text() + "\n"  // SenderIP, receiver IP and time along with 
-
-   _, err := io.WriteString(file, text)  // writes the text string to the file object
-   
-   if err != nil {
-      panic(err)
+    if err != nil {
+        panic(err)
     }
 
-   SendMessage(timeString+" "+scanner.Text()+"\n", host)  // sends message with time and message
- 
- }
+  
+
+    clientAddr := connection.RemoteAddr().String()
+
+    go func() { serverStart(clientAddr, connection) }()
+    fmt.Print("\nHost to connect to: ")
+    var host string
+    fmt.Scanln(&host)
+    fmt.Println("name :",host)
+
+
+    for key := range userNames { 
+        // fmt.Printf("key[%s] value[%s]\n", k, v)
+        if host == key {
+        var userAddress = userNames[host]
+
+    //    fmt.Println("ip :-",user)
+        Ip = userAddress
+
+        fmt.Println(Ip)
+    
+        } 
+    }
+
+    ip, _, err := net.SplitHostPort(Ip)
+    if err != nil {
+        fmt.Println("Invalid input format. Please provide IP address and port.")
+        return
+    }
+
+    receiverIp = ip
+
+    prevMessages()
+
+    for {
+
+        scanner := bufio.NewScanner(os.Stdin)
+        scanner.Scan()
+        mymsg := scanner.Text()
+
+        currentTime := time.Now()
+
+        timeString := currentTime.Format("2006-01-02 15:04:05")
+
+        text := "Shubham : " + timeString + " " + mymsg
+
+        username := strings.Split(text, ":")[0]
+
+        file, err := os.Open("./mylogfile.txt")
+        if err != nil {
+            fmt.Println(err)
+            return
+        }
+        defer file.Close()
+
+        scan := bufio.NewScanner(file)
+        scan.Scan()
+        line := scan.Text()
+
+        if err := scan.Err(); err != nil {
+            fmt.Println(err)
+            return
+        }
+
+        var map_1 = make(map[string]UserInfo)
+
+        _ = json.Unmarshal([]byte(line), &map_1)
+
+        if len(map_1) == 0 {
+            map_1[receiverIp] = UserInfo{Username: username, Chat: []string{text}}
+        }
+
+        mydata := map_1[receiverIp]
+        mydata.Chat = append(mydata.Chat, text)
+        map_1[receiverIp] = mydata
+
+        t, err := json.Marshal(map_1)
+        if err != nil {
+            panic(err)
+        }
+
+        finalOut := string(t)
+
+        myfile, err := os.OpenFile("./mylogfile.txt", os.O_CREATE|os.O_WRONLY, 0644)
+        if err != nil {
+            fmt.Println(err)
+            return
+        }
+
+        _, err = io.WriteString(myfile, finalOut)
+        if err != nil {
+            fmt.Println(err)
+            return
+        }
+
+        myfile.Close()
+
+        if err != nil {
+            panic(err)
+        }
+
+        SendMessage(timeString+" "+scanner.Text()+"\n", Ip)
+
+    }
 }
 
+func prevMessages() {
 
+    file, err := os.Open("./mylogfile.txt")
 
-func prevMessages() {   // Loads previous messages based on ip address
+    if err != nil {
+        fmt.Println(err)
+        return
+    }
+    defer file.Close()
 
- file, err := os.Open("./mylogfile.txt")  // Opens the file if any error in opening file it prints the error
-   if err != nil {
-   fmt.Println(err)
-   return
- }
+    scanner := bufio.NewScanner(file)
+    scanner.Scan()
+    line := scanner.Text()
 
- defer file.Close() // Closes file after function is executed
+    if err := scanner.Err(); err != nil {
+        fmt.Println(err)
+        return
+    }
 
- scanner := bufio.NewScanner(file) // bufio.NewScanner scans the file line by line and stores it in scanner
+    var map_1 = make(map[string]UserInfo)
+    _ = json.Unmarshal([]byte(line), &map_1)
 
- target := receiverIp  // recieverIP is stored in target to use later
+    for _, val := range map_1[receiverIp].Chat {
+        fmt.Println(val)
+    }
+}
+func serverStart(clientAddr string, connection net.Conn) {
 
- for scanner.Scan() {
- line := scanner.Text() 
- words := strings.Fields(line) // each line is split into words 
+    PORT := ":" + os.Args[1]
 
- if len(words) >= 2 && words[1] == target {  // checks if atleast 2 words present and if 2nd word matches the target i.e. receiver IP, if both conditions are true then it extracts all words from 3rd word
-   arr := append(words[2:])  // extracted words are appended to array named as "arr"
-   finalOutput := strings.Join(arr, " ") // words are joined into single string with space
-   fmt.Println(strings.Trim(finalOutput, "[]"))   // trims any "[]" brackets
- }
- }
+    l, err := net.Listen("tcp", PORT)
 
- if err := scanner.Err(); err != nil {  // If any error , it is printed 
- fmt.Println(err)
- return
- }
+    if err != nil {
+        fmt.Println(err)
+        return
+    }
+
+    defer l.Close()
+
+    for {
+        c, err := l.Accept()
+        if err != nil {
+            fmt.Println(err)
+            return
+        }
+
+        go HandleNewMsg(c, connection)
+
+    }
 }
 
-func serverStart(clientAddr string, connection net.Conn) {  // Function starts server , takes two arguments ip address of client and connection object
+func HandleNewMsg(c net.Conn, connection net.Conn) {
 
- PORT := ":" + os.Args[1]  
+    clientAddr := c.RemoteAddr().String()
 
- l, err := net.Listen("tcp", PORT)   // listens for incoming tcp connection on the port number
+    receiverIp = strings.Split(clientAddr, ":")[0]
 
- if err != nil {
-   fmt.Println(err)
-   return
- }
- 
- defer l.Close()
+    for {
+        netData, err := bufio.NewReader(c).ReadString('\n')
 
- for {  // for loop continously accepts incoming connections 
-   c, err := l.Accept()
-   if err != nil {
-   fmt.Println(err)
-   return
- }
+        if err != nil {
+            fmt.Println(err)
+            return
+        }
 
-   go HandleNewMsg(c, connection)  // For each accepted connection, the HandleNewMsg function is called concurrently
+        msg := strings.TrimSpace(string(netData)) 
 
- }
+        fmt.Println(msg)
+
+        username := strings.Split(msg, ":")[0]
+
+        file, err := os.Open("./mylogfile.txt")
+        if err != nil {
+            fmt.Println(err)
+            return
+        }
+        defer file.Close()
+
+        scanner := bufio.NewScanner(file)
+        scanner.Scan()
+        line := scanner.Text()
+
+        if err := scanner.Err(); err != nil {
+            fmt.Println(err)
+            return
+        }
+
+        var map_1 = make(map[string]UserInfo)
+
+        _ = json.Unmarshal([]byte(line), &map_1)
+
+        if len(map_1) == 0 {
+            map_1[receiverIp] = UserInfo{Username: username, Chat: []string{msg}}
+        } else {
+            mydata := map_1[receiverIp]
+            mydata.Username = username
+            mydata.Chat = append(mydata.Chat, msg)
+            map_1[receiverIp] = mydata
+        }
+
+        t, err := json.Marshal(map_1)
+        if err != nil {
+            panic(err)
+        }
+
+        finalOut := string(t)
+
+        myfile, err := os.OpenFile("./mylogfile.txt", os.O_CREATE|os.O_WRONLY, 0644)
+        if err != nil {
+            fmt.Println(err)
+            return
+        }
+
+        _, err = io.WriteString(myfile, finalOut)
+        if err != nil {
+            fmt.Println(err)
+            return
+        }
+
+        myfile.Close()
+
+        if err != nil {
+            panic(err)
+        }
+
+        c.Close()
+
+        break
+
+    }
 }
 
-func HandleNewMsg(c net.Conn, connection net.Conn) {  // Takes 2 arg, "c" represents the client connection and "connection" represents the server connection, net.Conn is 
+func SendMessage(message, host string) {
 
- clientAddr := c.RemoteAddr().String()  // c.RemoteAddr() gets clients address as a string 
+    CONNECT := Ip
+    c, err := net.Dial("tcp", CONNECT)
+    if err != nil {
+        fmt.Println(err)
+        return
+    }
 
- receiverIp = strings.Split(clientAddr, ":")[0]  // clients address is split until ":" and stores it as reciever IP 
-
- for {
-   netData, err := bufio.NewReader(c).ReadString('\n')  // clients message is stored in netData variable
-   
-   // bufio.NewReader(c) reads data from the client connection, ReadString('\n') reads until it encounters newline character
-   
-   if err != nil {
-     fmt.Println(err)
-     return
-   }
-
- msg := strings.TrimSpace(string(netData))  // trims clients message "strings.TrimSpace" removes any white space
-
- println(msg)  // prints msg
-
- text := senderIP + " " + receiverIp + " " + msg + "\n"  // creates new string concatenating sender IP, reciever IP and msg
-
- io.WriteString(file, text)  // writes the message to file using "io.WriteString"
-
- if err != nil {
-   panic(err)
- }
-
- c.Close()  // closes the client connection
-
- break
-
- }
-}
-
-func SendMessage(message, host string) {  // takes 2 arg, message and host i.e. ip and port of other user
-
- CONNECT := host  // assigns the host value to 'CONNECT' variable
- c, err := net.Dial("tcp", CONNECT)  // creates TCP connection with other user
-   if err != nil {
-     fmt.Println(err)
-     return
- }
-
- c.Write([]byte("Shubham :" + " " + message + "\n"))  // writes message recieved from client 
- bufio.NewReader(c).ReadString('\n')  // reads message from client and reads until newline character
+    c.Write([]byte("Shubham :" + " " + message + "\n"))
+    bufio.NewReader(c).ReadString('\n')
 
 }
+
